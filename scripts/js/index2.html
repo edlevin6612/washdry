@@ -1,0 +1,304 @@
+<!DOCTYPE HTML>
+<html>
+	<head>
+		<meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+		<title>Highcharts Example</title>
+<script src="http://code.jquery.com/jquery-3.1.1.min.js"></script>
+
+<script src="https://www.gstatic.com/firebasejs/3.6.10/firebase-app.js"></script>
+<script src="https://www.gstatic.com/firebasejs/3.6.10/firebase-auth.js"></script>
+<script src="https://www.gstatic.com/firebasejs/3.6.10/firebase-database.js"></script>
+<script src="secrets.js"></script>
+
+<script type="text/javascript">
+$(function() {
+
+	var ax_threshold = 1;
+	var ay_threshold = 1;
+	var az_threshold = 1;
+
+	var interval_counter = 1;
+
+	var last_interval_date = 0;
+
+    // Set up an event that is triggered whenever a new climate-data point is added to firebase
+    var config = {
+      apiKey: firebase_api_key,
+      authDomain: firebase_auth_domain,
+      databaseURL: firebase_database_url
+    };
+    firebase.initializeApp(config);
+
+    firebase.auth().signInWithEmailAndPassword(firebase_user, firebase_pass).catch(function(error) {
+      // Handle Errors here.
+      var errorCode = error.code;
+      var errorMessage = error.message;
+      console.log(errorCode);
+      console.log(errorMessage);
+    });
+
+    var fb = firebase.database().ref('dryer');
+    var wait = false;
+
+    fb.on('child_added', function(data) {
+
+        var dataVal = data.val();
+        var dataKey = parseInt(data.key);
+
+		console.log("detector_threshold: " + dataVal.detector.detector_threshold + ", detected_threshold: " + dataVal.detector.detected_threshold);
+
+		current_interval_date = new Date(parseInt(dataVal.timestamp))
+		console.log(dataVal.detector.detector);
+		console.log(dataVal.detector.detected);
+		if (dataVal.detector.detector == (dataVal.detector.detector_threshold-1)) {
+
+			// add a vertical plotLine at detector threshold
+			$('#container').highcharts().xAxis[0].addPlotLine({
+				value: current_interval_date,
+				color: 'red',
+				width: 1,
+				id: 'detector-interval-' + interval_counter
+			});
+
+			// color-shade past interval if detected threshold reached
+			if (dataVal.detector.detected >= (dataVal.detector.detected_threshold-1)) {
+				$('#container').highcharts().xAxis[0].addPlotBand({
+					color: '#FFCCCC',
+					from: last_interval_date,
+					to: current_interval_date,
+					id: 'detected-range-' + interval_counter
+				});
+			}
+
+			interval_counter++;
+			last_interval_date = current_interval_date;
+		}
+
+        // add ax point to series 0, don't redraw yet (false)
+        $('#container').highcharts().series[0].addPoint({
+            x: new Date(parseInt(dataVal.timestamp)),
+            y: dataVal.accel.ax
+        }, false);
+
+        // add ay point to series 0, don't redraw yet (false)
+        $('#container').highcharts().series[1].addPoint({
+            x: new Date(parseInt(dataVal.timestamp)),
+            y: dataVal.accel.ay
+        }, false);
+
+        // add az point to series 0, don't redraw yet (false)
+        $('#container').highcharts().series[2].addPoint({
+            x: new Date(parseInt(dataVal.timestamp)),
+            y: dataVal.accel.az
+        }, false);
+
+		if (ax_threshold != data.child('threshold').child('ax').val()) {
+			ax_threshold = data.child('threshold').child('ax').val();
+
+			Highcharts.charts[0].yAxis[0].update({
+				plotLines: [{
+					value: ax_threshold,
+					color: 'green',
+					dashStyle: 'shortdash',
+					width: 2,
+					label: {
+						text: 'AX threshold'
+					}
+				}]
+			}, false);
+		}
+
+		if (ay_threshold != data.child('threshold').child('ay').val()) {
+			ay_threshold = data.child('threshold').child('ay').val();
+
+			Highcharts.charts[0].yAxis[1].update({
+                plotLines: [{
+					value: ay_threshold,
+					color: 'blue',
+					dashStyle: 'shortdash',
+					width: 2,
+					label: {
+						text: 'AY threshold'
+					}
+				}]
+        	}, false);
+		}
+
+		if (az_threshold != data.child('threshold').child('az').val()) {
+			az_threshold = data.child('threshold').child('az').val();
+
+			Highcharts.charts[0].yAxis[2].update({
+					plotLines: [{
+						value: az_threshold,
+						color: 'red',
+						dashStyle: 'shortdash',
+						width: 2,
+						label: {
+							text: 'AZ threshold'
+						}
+					}]
+			}, false);
+		}
+
+        //console.log($('#container').highcharts().series[0]);
+
+        // added points; delayed redraw
+        if (!wait) {
+        	// console.log("waiting");
+        	wait = true;
+        	setTimeout(function(){
+        		$('#container').highcharts().redraw();
+        		wait = false;
+        	}, 1);
+        }
+    });
+
+    $(document).ready(function() {
+
+        Highcharts.setOptions({
+            global: {
+                useUTC: false
+            }
+        });
+
+        // set up highcharts
+        $('#container').highcharts({
+            chart: {
+                type: 'spline'
+            },
+            title: {
+                text: 'Washer Accelerometer Data'
+            },
+            xAxis: {
+                type: 'datetime'
+            },
+            yAxis: [{
+                labels: {
+                    format: '{value}'
+                },
+                title: {
+                    text: 'AX'
+                },
+				plotLines: [{
+					value: ax_threshold,
+					color: 'green',
+					dashStyle: 'shortdash',
+					width: 1,
+					label: {
+						text: 'AX threshold'
+					}
+				}]
+            }, {
+                labels: {
+                    format: '{value}'
+                },
+                opposite: true,
+                title: {
+                    text: 'AY'
+                },
+                plotLines: [{
+					value: ay_threshold,
+					color: 'blue',
+					dashStyle: 'shortdash',
+					width: 1,
+					label: {
+						text: 'AY threshold'
+					}
+				}]
+            }, {
+                labels: {
+                    format: '{value}'
+                },
+                opposite: true,
+                title: {
+                    text: 'AZ'
+                },
+                plotLines: [{
+					value: az_threshold,
+					color: 'red',
+					dashStyle: 'shortdash',
+					width: 1,
+					label: {
+						text: 'AZ threshold'
+					}
+				}]
+            }],
+            legend: {
+                enabled: true
+            },
+            exporting: {
+                enabled: false
+            },
+            rangeSelector: {
+            	enabled: true,
+            	buttons: [{
+            		type: 'second',
+            		count: 5,
+            		text: '5s'
+            	},{
+            		type: 'minute',
+            		count: 1,
+            		text: 'min'
+            	},{
+            	    type: 'hour',
+            		count: 1,
+            		text: 'hr'
+            	},{
+            	    type: 'day',
+            		count: 1,
+            		text: 'day'
+            	},{
+            	    type: 'week',
+            		count: 1,
+            		text: 'week'
+            	},{
+					type: 'month',
+					count: 1,
+					text: '1m'
+				}, {
+					type: 'month',
+					count: 3,
+					text: '3m'
+				}, {
+					type: 'month',
+					count: 6,
+					text: '6m'
+				}, {
+					type: 'ytd',
+					text: 'YTD'
+				}, {
+					type: 'year',
+					count: 1,
+					text: '1y'
+				}, {
+					type: 'all',
+					text: 'All'
+            	}]
+            },
+            navigator: {
+            	enabled: true
+            },
+            series: [{
+                name: 'ax',
+                yAxis: 0,
+                turboThreshold: 10000
+            }, {
+                name: 'ay',
+                yAxis: 1,
+                turboThreshold: 10000
+            }, {
+                name: 'az',
+                yAxis: 2,
+                turboThreshold: 10000
+            }]
+        });
+    });
+});
+		</script>
+	</head>
+	<body>
+        <script src="http://code.highcharts.com/stock/highstock.js"></script>
+        <script src="http://code.highcharts.com/stock/modules/exporting.js"></script>
+        <div id="container" style="width: 1400px; height: 700px;"></div>
+    </body>
+</html>

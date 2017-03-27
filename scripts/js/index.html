@@ -1,0 +1,130 @@
+<!DOCTYPE HTML>
+<html>
+	<head>
+		<meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+		<title>Highcharts Example</title>
+<script src="http://code.jquery.com/jquery-3.1.1.min.js"></script>
+
+<script src="https://www.gstatic.com/firebasejs/3.6.10/firebase-app.js"></script>
+<script src="https://www.gstatic.com/firebasejs/3.6.10/firebase-auth.js"></script>
+<script src="https://www.gstatic.com/firebasejs/3.6.10/firebase-database.js"></script>
+<script src="secrets.js"></script>
+
+<script type="text/javascript">
+$(function() {
+
+    // Set up an event that is triggered whenever a new climate-data point is added to firebase
+    var config = {
+      apiKey: firebase_api_key,
+      authDomain: firebase_auth_domain,
+      databaseURL: firebase_database_url
+    };
+    firebase.initializeApp(config);
+
+    firebase.auth().signInWithEmailAndPassword(firebase_user, firebase_pass).catch(function(error) {
+      // Handle Errors here.
+      var errorCode = error.code;
+      var errorMessage = error.message;
+      console.log(errorCode);
+      console.log(errorMessage);
+    });
+
+    var fb = firebase.database().ref('washer');
+
+    fb.on('child_added', function(data) {
+        var dataVal = data.val();
+        var dataKey = parseInt(data.key);
+
+        // add ax point to series 0, don't redraw yet (false)
+        $('#container').highcharts().series[0].addPoint({
+            x: new Date(parseInt(dataVal.timestamp)),
+            y: dataVal.ax
+        }, false);
+
+        // add ay point to series 0, don't redraw yet (false)
+        $('#container').highcharts().series[1].addPoint({
+            x: new Date(parseInt(dataVal.timestamp)),
+            y: dataVal.ay
+        }, false);
+
+        // add az point to series 0, don't redraw yet (false)
+        $('#container').highcharts().series[2].addPoint({
+            x: new Date(parseInt(dataVal.timestamp)),
+            y: dataVal.az
+        }, false);
+
+        console.log($('#container').highcharts().series[0]);
+        // added points; redraw
+        $('#container').highcharts().redraw();
+    });
+
+    $(document).ready(function() {
+
+        Highcharts.setOptions({
+            global: {
+                useUTC: false
+            }
+        });
+
+        // set up highcharts
+        $('#container').highcharts({
+            chart: {
+                type: 'spline'
+            },
+            title: {
+                text: 'Pseudo washer\'s accelerometer data'
+            },
+            xAxis: {
+                type: 'datetime'
+            },
+            yAxis: [{
+                labels: {
+                    format: '{value}'
+                },
+                title: {
+                    text: 'AX'
+                }
+            }, {
+                labels: {
+                    format: '{value}'
+                },
+                opposite: true,
+                title: {
+                    text: 'AY'
+                }
+            }, {
+                labels: {
+                    format: '{value}'
+                },
+                opposite: true,
+                title: {
+                    text: 'AZ'
+                }
+            }],
+            legend: {
+                enabled: true
+            },
+            exporting: {
+                enabled: false
+            },
+            series: [{
+                name: 'ax',
+                yAxis: 0
+            }, {
+                name: 'ay',
+                yAxis: 1
+            }, {
+                name: 'az',
+                yAxis: 2
+            }]
+        });
+    });
+});
+		</script>
+	</head>
+	<body>
+        <script src="http://code.highcharts.com/stock/highstock.js"></script>
+        <script src="http://code.highcharts.com/stock/modules/exporting.js"></script>
+        <div id="container" style="width: 1400px; height: 700px;"></div>
+    </body>
+</html>

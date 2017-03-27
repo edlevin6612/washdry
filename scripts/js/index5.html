@@ -1,0 +1,256 @@
+<!DOCTYPE HTML>
+<html>
+	<head>
+		<meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+		<title>Highcharts Example</title>
+<script src="http://code.jquery.com/jquery-3.1.1.min.js"></script>
+
+<script src="https://www.gstatic.com/firebasejs/3.6.10/firebase-app.js"></script>
+<script src="https://www.gstatic.com/firebasejs/3.6.10/firebase-auth.js"></script>
+<script src="https://www.gstatic.com/firebasejs/3.6.10/firebase-database.js"></script>
+<script src="secrets.js"></script>
+
+<script type="text/javascript">
+$(function() {
+
+	var ax_threshold = 6000;
+	var ay_threshold = 1;
+	var az_threshold = 1;
+
+	var id_counter = 1;
+	var interval_counter = 0;
+	var interval_limit = 30;
+
+	var last_interval_date = 0;
+	var interval_values = [];
+	var detected_on = 0;
+
+    // Set up an event that is triggered whenever a new climate-data point is added to firebase
+    var config = {
+      apiKey: firebase_api_key,
+      authDomain: firebase_auth_domain,
+      databaseURL: firebase_database_url
+    };
+    firebase.initializeApp(config);
+
+    firebase.auth().signInWithEmailAndPassword(firebase_user, firebase_pass).catch(function(error) {
+      // Handle Errors here.
+      var errorCode = error.code;
+      var errorMessage = error.message;
+      console.log(errorCode);
+      console.log(errorMessage);
+    });
+
+    var fb = firebase.database().ref('dryer');
+    var wait = false;
+
+    fb.on('child_added', function(data) {
+
+		interval_counter++;
+
+        var dataVal = data.val();
+        var dataKey = parseInt(data.key);
+
+		var accel_avg = (dataVal.accel.ax + dataVal.accel.ay + dataVal.accel.az) / 3;
+
+		// console.log("detector_threshold: " + dataVal.detector.detector_threshold + ", detected_threshold: " + dataVal.detector.detected_threshold);
+
+		current_interval_date = new Date(parseInt(dataVal.timestamp))
+
+		interval_values.push(accel_avg);
+
+		if (interval_counter == interval_limit) {
+
+			// get mean of interval's values
+			var acc_sum = interval_values.reduce(function(acc, val) { return acc + val; });
+			var acc_avg = acc_sum / interval_counter;
+
+			// avg abs deviation
+			var acc_abs_dev = interval_values.reduce(function(acc, val) {
+				return acc + Math.abs(val - acc_avg);
+			});
+
+			// MAD
+			acc_avg_abs_dev = Math.floor(acc_abs_dev / interval_counter);
+
+			// add a vertical plotLine at detector threshold
+			$('#container').highcharts().xAxis[0].addPlotLine({
+				value: current_interval_date,
+				color: 'red',
+				width: 1,
+				zIndex: 5,
+				id: 'detector-interval-' + id_counter,
+				label: {
+					text: acc_avg_abs_dev
+				}
+			});
+
+			// detect state
+			var detected_on = interval_values.reduce(function(acc, val) {
+				var det = ((val > ax_threshold) ? 1 : 0)
+				return acc + det;
+			},0);
+			console.log(detected_on);
+
+			// color-shade past interval if detected threshold reached
+			//if (dataVal.detector.detected >= (dataVal.detector.detected_threshold-1)) {
+			if (detected_on > 12 && acc_avg_abs_dev > 290) {
+				$('#container').highcharts().xAxis[0].addPlotBand({
+					color: '#FFCCCC',
+					from: last_interval_date,
+					to: current_interval_date,
+					id: 'detected-range-' + id_counter
+				});
+			}
+
+			id_counter++;
+			interval_counter = 0;
+			last_interval_date = current_interval_date;
+			interval_values = [];
+			detected_on = 0;
+		}
+
+        // add ax point to series 0, don't redraw yet (false)
+        $('#container').highcharts().series[0].addPoint({
+            x: new Date(parseInt(dataVal.timestamp)),
+            y: accel_avg
+        }, false);
+
+		/*if (ax_threshold != data.child('threshold').child('ax').val()) {
+			ax_threshold = data.child('threshold').child('ax').val();
+
+			Highcharts.charts[0].yAxis[0].update({
+				plotLines: [{
+					value: ax_threshold,
+					color: 'green',
+					dashStyle: 'shortdash',
+					width: 2,
+					zIndex: 5,
+					label: {
+						text: 'threshold'
+					}
+				}]
+			}, false);
+		}*/
+
+        //console.log($('#container').highcharts().series[0]);
+
+        // added points; delayed redraw
+        if (!wait) {
+        	// console.log("waiting");
+        	wait = true;
+        	setTimeout(function(){
+        		$('#container').highcharts().redraw();
+        		wait = false;
+        	}, 1);
+        }
+    });
+
+    $(document).ready(function() {
+
+        Highcharts.setOptions({
+            global: {
+                useUTC: false
+            }
+        });
+
+        // set up highcharts
+        $('#container').highcharts({
+            chart: {
+                type: 'spline'
+            },
+            title: {
+                text: 'Washer Accelerometer Data'
+            },
+            xAxis: {
+                type: 'datetime'
+            },
+            yAxis: [{
+                labels: {
+                    format: '{value}'
+                },
+                title: {
+                    text: 'ACCEL AVG'
+                },
+				plotLines: [{
+					value: ax_threshold,
+					color: 'green',
+					dashStyle: 'shortdash',
+					width: 1,
+					zIndex: 5,
+					label: {
+						text: 'threshold'
+					}
+				}]
+            }],
+            legend: {
+                enabled: true
+            },
+            exporting: {
+                enabled: false
+            },
+            rangeSelector: {
+            	enabled: true,
+            	buttons: [{
+            		type: 'second',
+            		count: 5,
+            		text: '5s'
+            	},{
+            		type: 'minute',
+            		count: 1,
+            		text: 'min'
+            	},{
+            	    type: 'hour',
+            		count: 1,
+            		text: 'hr'
+            	},{
+            	    type: 'day',
+            		count: 1,
+            		text: 'day'
+            	},{
+            	    type: 'week',
+            		count: 1,
+            		text: 'week'
+            	},{
+					type: 'month',
+					count: 1,
+					text: '1m'
+				}, {
+					type: 'month',
+					count: 3,
+					text: '3m'
+				}, {
+					type: 'month',
+					count: 6,
+					text: '6m'
+				}, {
+					type: 'ytd',
+					text: 'YTD'
+				}, {
+					type: 'year',
+					count: 1,
+					text: '1y'
+				}, {
+					type: 'all',
+					text: 'All'
+            	}]
+            },
+            navigator: {
+            	enabled: true
+            },
+            series: [{
+                name: 'accel',
+                yAxis: 0,
+                turboThreshold: 10000
+            }]
+        });
+    });
+});
+		</script>
+	</head>
+	<body>
+        <script src="http://code.highcharts.com/stock/highstock.js"></script>
+        <script src="http://code.highcharts.com/stock/modules/exporting.js"></script>
+        <div id="container" style="width: 1400px; height: 700px;"></div>
+    </body>
+</html>
