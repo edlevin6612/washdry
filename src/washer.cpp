@@ -1,51 +1,62 @@
 /*
-Author: Nolan Gilley
+
+Author: Ed Levin
 License: CC-BY-SA, https://creativecommons.org/licenses/by-sa/2.0/
-Date: 7/30/2016
-File: laundry_esp8266.ino
-This sketch is for a NodeMCU wired up with 2 accelerometers and
-2 reed swithches.  An MPU6050 and a reed switch are attached to
-both the wash and dryer.  This sketch will send mqtt messages to
-the defined topics which describe the state of the washer and dryer
-and the details of the accelerometer data.
+Date: 3/31/2017
 
-1) Update the WIFI ssid and password below
-2) Update the thresholds for washer and dryer movement
+Based on the original sketch by:
+Author: Nolan Gilley
+https://github.com/nkgilley/nodemcu-laundry
 
-The thresholds are also configurable over mqtt!
+This sketch is for a NodeMCU wired up with an accelerometer.
+The combo is connected to either a washer or a dryer.
+This sketch will send mqtt messages to the defined topics as well as
+Firebase (optional) describing the state of the washer or dryer and
+the details of the accelerometer data.
+
+To get set up:
+
+1) Rename secrets-template.h to secrets.h and fill in WIFI, MQTT broker, Firebase credentials
+2) Update the thresholds in config.h (might need to collect some baseline data first)
+
+The thresholds are also configurable over mqtt via these topics:
+
+sensor/<DEVILE_NAME>/set/accel_threshold
+sensor/<DEVILE_NAME>/set/detected_threshold
+sensor/<DEVILE_NAME>/set/detector_threshold
+sensor/<DEVILE_NAME>/set/detector_std_threshold_1
+sensor/<DEVILE_NAME>/set/detector_std_threshold_2
+sensor/<DEVILE_NAME>/set/detector_avg_threshold
 
 The ESP8266 will publish mqtt commands to:
-sensor/dryer/(EMPTY,RUNNING,COMPLETE)
-sensor/washer/(EMPTY,RUNNING,COMPLETE)
-sensor/dryer/detail: dryer %d, %d, %d, %d, %d", dryer_door_status, dryer_state, dryer_ax_range, dryer_ay_range, dryer_az_range
-sensor/washer/detail: dryer %d, %d, %d, %d, %d", washer_door_status, washer_state, washer_ax_range, washer_ay_range, washer_az_range
+
+sensor/<DEVICE_NAME>/status (Running/Stopped)
+sensor/<DEVICE_NAME/accel_avg
 
 And it SUBSCRIBES to:
 
-sensor/dryer/set/ax
-Ax value for dryer (int)
-sensor/dryer/set/ay
-Ay value for dryer (int)
-sensor/dryer/set/az
-Az value for dryer (int)
-sensor/washer/set/ay
-Ay value for washer (int)
-sensor/dryer/set/detected
-# of dryer detections out of 15 cycles
-sensor/washer/set/detected
-# of washer detections of of 15
-sensor/dryer/set/detail
-0 or 1 (off/on)
-sensor/washer/set/detail
+sensor/<DEVICE_NAME>/set/accel_threshold
+(int)
+sensor/<DEVICE_NAME>/set/detected_threshold
+(int)
+sensor/<DEVICE_NAME>/set/detector_threshold
+(int)
+sensor/<DEVICE_NAME>/set/detector_std_threshold_1
+(int)
+sensor/<DEVICE_NAME>/set/detector_std_threshold_2
+(int)
+sensor/<DEVICE_NAME>/set/detector_avg_threshold
+(int)
+sensor/<DEVICE_NAME>/set/mqtt_publish_data
+0 or 1
+sensor/<DEVICE_NAME>/set/firebase_send_data
 0 or 1
 
 TODO:
 
 1. Research alerting service that can be invoked directly from device
 2. Fix docs
-3. Send sufficient data to firebase
-4. Fix MQTT subscriptions
-5. Fix Firebase client
+3. Fix Firebase client
 
 */
 
@@ -56,6 +67,7 @@ TODO:
 #include "Statistic.h"
 
 #include "secrets.h"
+#include "config.h"
 
 // ESP8266 Includes
 #include <ESP8266WiFi.h>
@@ -109,42 +121,18 @@ const char* mqtt_password = MQTT_PASSWORD;
 
 char mqtt_topic_accel_avg[30];
 
-// const char* mqtt_topic_accel = "sensor/dryer/accel";
-
-/*
-const char* mqtt_topic_ax = "sensor/dryer/ax";
-const char* mqtt_topic_ay = "sensor/dryer/ay";
-const char* mqtt_topic_az = "sensor/dryer/az";
-*/
-
-// const char* mqtt_topic_app_detail = "sensor/dryer/detail";
 char mqtt_topic_app_status[30];
-
-// const char* mqtt_topic_app_status = "sensor/dryer/status";
-
 char mqtt_topic_set_subscribe[30];
-// const char* mqtt_topic_set_subscribe = "sensor/dryer/set/+";
-
-char mqtt_topic_set_accel_avg[30];
-// const char* mqtt_topic_set_accel = "sensor/dryer/accel";
-
-/*
-const char* mqtt_topic_set_ax = "sensor/dryer/set/ax";
-const char* mqtt_topic_set_ay = "sensor/dryer/set/ay";
-const char* mqtt_topic_set_az = "sensor/dryer/set/az";
-*/
+char mqtt_topic_set_accel_threshold[30];
 
 char mqtt_topic_set_detected_threshold[50];
-// const char* mqtt_topic_set_detected_threshold = "sensor/dryer/set/detected_threshold";
-
 char mqtt_topic_set_detector_threshold[50];
-// const char* mqtt_topic_set_detected_threshold = "sensor/dryer/set/detector_threshold";
+char mqtt_topic_set_detector_std_threshold_1[50];
+char mqtt_topic_set_detector_std_threshold_2[50];
+char mqtt_topic_set_detector_avg_threshold[50];
 
 char mqtt_topic_set_mqtt_publish_data[50];
-//const char* mqtt_topic_set_mqtt_publish_data = "sensor/dryer/set/mqtt_publish_data";
-
 char mqtt_topic_set_firebase_send_data[50];
-// const char* mqtt_topic_set_firebase_send_data = "sensor/dryer/set/firebase_send_data";
 
 WiFiClient espClient;
 PubSubClient client(espClient);
@@ -180,37 +168,13 @@ int app_accel_avg = 0;
 int detector_std = 0;
 int detector_avg = 0;
 
-// CONFIGURABLE THRESHOLDS
-
-// app_accel_avg over this value == movement for the sample
-int app_accel_threshold = 6100;
-
-// num of positive samples required to consider interval as having movement
-int app_detected_threshold = 12;
-
-// num of samples that comprise an interval
-int app_detector_threshold = 30;
-
-// max standard deviation to determine movement
-int detector_std_threshold_1 = 120;
-
-// max standard deviation that, along with deterctor_avg, determine movement
-int detector_std_threshold_2 = 100;
-
-// interval sample average over limit along with STD determine movement
-int detector_avg_threshold = 6200;
-
-//int app_ax_threshold = 2000;
-//int app_ay_threshold = 1000;
-//int app_az_threshold = 17000;
-
-//int app_ax_threshold = 17500;
-//int app_ay_threshold = 2000;
-//int app_az_threshold = 3300;
-
-//int washer_ax_threshold = 17500;
-//int washer_ay_threshold = 18000;
-//int washer_az_threshold = 3300;
+// THRESHOLDS
+int app_accel_threshold = APP_ACCEL_THRESHOLD;
+int app_detected_threshold = APP_DETECTED_THRESHOLD;
+int app_detector_threshold = APP_DETECTOR_THRESHOLD;
+int detector_std_threshold_1 = DETECTOR_STD_THRESHOLD_1;
+int detector_std_threshold_2 = DETECTOR_STD_THRESHOLD_2;
+int detector_avg_threshold = DETECTOR_AVG_THRTESHOLD;
 
 int reconnect_delay = 60;   // for MQTT, sec
 
@@ -222,8 +186,8 @@ int app_firebase_send_data = 1;
 DynamicJsonBuffer jsonBuffer;
 JsonObject& firebaseObject = jsonBuffer.createObject();
 JsonObject& accel = firebaseObject.createNestedObject("accel");
-//JsonObject& threshold = firebaseObject.createNestedObject("threshold");
 JsonObject& detector = firebaseObject.createNestedObject("detector");
+JsonObject& detected = firebaseObject.createNestedObject("detected");
 JsonObject& tempTime = firebaseObject.createNestedObject("timestamp");
 
 void setup_wifi()
@@ -259,40 +223,14 @@ void callback(char* topic, byte* payload, unsigned int length)
     Serial.print((char)payload[i]);
   }
   Serial.println();
-  /*if (strcmp(topic, mqtt_topic_set_ax) == 0)
-  {
-    payload[length] = '\0';
-    String s = String((char*)payload);
-    int i= s.toInt();
-    app_ax_threshold = i;
-    Serial.print("appliance ax set to ");
-    Serial.println(i);
-  }
-  else if (strcmp(topic, mqtt_topic_set_ay) == 0)
-  {
-    payload[length] = '\0';
-    String s = String((char*)payload);
-    int i= s.toInt();
-    app_ay_threshold = i;
-    Serial.print("appliance ay set to ");
-    Serial.println(i);
-  }
-  else if (strcmp(topic, mqtt_topic_set_az) == 0)
-  {
-    payload[length] = '\0';
-    String s = String((char*)payload);
-    int i= s.toInt();
-    app_az_threshold = i;
-    Serial.print("appliance az set to ");
-    Serial.println(i);
-  } */
-  if (strcmp(topic, mqtt_topic_set_accel_avg) == 0)
+
+  if (strcmp(topic, mqtt_topic_set_accel_threshold) == 0)
   {
     payload[length] = '\0';
     String s = String((char*)payload);
     int i= s.toInt();
     app_accel_threshold = i;
-    Serial.print("appliance accel threshold set to ");
+    Serial.print("accel threshold set to ");
     Serial.println(i);
   }
   else if (strcmp(topic, mqtt_topic_set_detected_threshold) == 0) {
@@ -300,7 +238,7 @@ void callback(char* topic, byte* payload, unsigned int length)
     String s = String((char*)payload);
     int i= s.toInt();
     app_detected_threshold = i;
-    Serial.print("appliance detected threshold set to ");
+    Serial.print("detected threshold set to ");
     Serial.println(i);
   }
   else if (strcmp(topic, mqtt_topic_set_detector_threshold) == 0)
@@ -309,7 +247,34 @@ void callback(char* topic, byte* payload, unsigned int length)
     String s = String((char*)payload);
     int i= s.toInt();
     app_detector_threshold = i;
-    Serial.print("appliance detector threshold set to ");
+    Serial.print("detector threshold set to ");
+    Serial.println(i);
+  }
+  else if (strcmp(topic, mqtt_topic_set_detector_std_threshold_1) == 0)
+  {
+    payload[length] = '\0';
+    String s = String((char*)payload);
+    int i= s.toInt();
+    detector_std_threshold_1 = i;
+    Serial.print("detector STD threshold 1 set to ");
+    Serial.println(i);
+  }
+  else if (strcmp(topic, mqtt_topic_set_detector_std_threshold_2) == 0)
+  {
+    payload[length] = '\0';
+    String s = String((char*)payload);
+    int i= s.toInt();
+    detector_std_threshold_2 = i;
+    Serial.print("detector STD threshold 2 set to ");
+    Serial.println(i);
+  }
+  else if (strcmp(topic, mqtt_topic_set_detector_avg_threshold) == 0)
+  {
+    payload[length] = '\0';
+    String s = String((char*)payload);
+    int i= s.toInt();
+    detector_avg_threshold = i;
+    Serial.print("detector AVG threshold set to ");
     Serial.println(i);
   }
   else if (strcmp(topic, mqtt_topic_set_mqtt_publish_data) == 0)
@@ -393,9 +358,14 @@ void setup()
   sprintf(mqtt_topic_app_status, "sensor/%s/status", DEVICE_NAME);
 
   sprintf(mqtt_topic_set_subscribe, "sensor/%s/set/+", DEVICE_NAME);
-  sprintf(mqtt_topic_set_accel_avg, "sensor/%s/set/accel_avg", DEVICE_NAME);
+
+  sprintf(mqtt_topic_set_accel_threshold, "sensor/%s/set/accel_threshold", DEVICE_NAME);
   sprintf(mqtt_topic_set_detected_threshold, "sensor/%s/set/detected_threshold", DEVICE_NAME);
   sprintf(mqtt_topic_set_detector_threshold, "sensor/%s/set/detector_threshold", DEVICE_NAME);
+  sprintf(mqtt_topic_set_detector_std_threshold_1, "sensor/%s/set/detector_std_threshold_1", DEVICE_NAME);
+  sprintf(mqtt_topic_set_detector_std_threshold_2, "sensor/%s/set/detector_std_threshold_2", DEVICE_NAME);
+  sprintf(mqtt_topic_set_detector_avg_threshold, "sensor/%s/set/detector_avg_threshold", DEVICE_NAME);
+
   sprintf(mqtt_topic_set_mqtt_publish_data, "sensor/%s/set/mqtt_publish_data", DEVICE_NAME);
   sprintf(mqtt_topic_set_firebase_send_data, "sensor/%s/set/firebase_send_data", DEVICE_NAME);
 
@@ -480,7 +450,6 @@ void loop()
     accelStats.clear();
 
     // Output to serial monitor
-    // sprintf(appString, "%d, %d/%d, %d/%d, %d/%d", app_state, app_ax_range, app_ax_threshold, app_ay_range, app_ay_threshold, app_az_range, app_az_threshold);
     sprintf(appString, "S: %d, A: %d/%d, DR: %d/%d, DD: %d/%d, STD: %d, AVG: %d", app_state, app_accel_avg, app_accel_threshold,
                                                      app_detector_count, app_detector_threshold, app_detected_count,
                                                      app_detected_threshold, detector_std, detector_avg);
@@ -489,36 +458,26 @@ void loop()
     // publish data via MQTT
     if (app_mqtt_publish_data == 1)
     {
-      //client.publish(mqtt_topic_app_detail, appString);
-
       client.publish(mqtt_topic_accel_avg, String(app_accel_avg).c_str());
-      /*
-      client.publish(mqtt_topic_ax, String(app_ax_range).c_str());
-      client.publish(mqtt_topic_ay, String(app_ay_range).c_str());
-      client.publish(mqtt_topic_az, String(app_az_range).c_str());
-      */
     }
 
     // send data to Firebase
     if (app_firebase_send_data == 1)
     {
-
       accel["avg"]       = app_accel_avg;
       accel["threshold"] = app_accel_threshold;
-      /*
-      accel["ax"] = app_ax_range;
-      accel["ay"] = app_ay_range;
-      accel["az"] = app_az_range;
 
-      threshold["ax"] = app_ax_threshold;
-      threshold["ay"] = app_ay_threshold;
-      threshold["az"] = app_az_threshold;
-      */
+      detector["count"]              = app_detector_count;
+      detector["threshold"]          = app_detector_threshold;
 
-      detector["detected"]           = app_detected_count;
-      detector["detector"]           = app_detector_count;
-      detector["detected_threshold"] = app_detected_threshold;
-      detector["detector_threshold"] = app_detector_threshold;
+      detected["count"]              = app_detected_count;
+      detected["threshold"]          = app_detected_threshold;
+
+      detected["std"]                = detector_std;
+      detected["avg"]                = detector_avg;
+      detected["std_threshold_1"]    = detector_std_threshold_1;
+      detected["std_threshold_2"]    = detector_std_threshold_2;
+      detected["avg_threshold"]      = detector_avg_threshold;
 
       firebaseObject["state"]        = app_state;
       tempTime[".sv"]                = "timestamp";
@@ -531,7 +490,6 @@ void loop()
       }
     }
 
-    // if ((app_ax_range > app_ax_threshold) and (app_ay_range > app_ay_threshold) and (app_az_range > app_az_threshold))
     if (app_accel_avg > app_accel_threshold)
     {
       app_reading = MOVEMENT_DETECTED;
