@@ -174,7 +174,7 @@ int app_detected_threshold = APP_DETECTED_THRESHOLD;
 int app_detector_threshold = APP_DETECTOR_THRESHOLD;
 int detector_std_threshold_1 = DETECTOR_STD_THRESHOLD_1;
 int detector_std_threshold_2 = DETECTOR_STD_THRESHOLD_2;
-int detector_avg_threshold = DETECTOR_AVG_THRTESHOLD;
+int detector_avg_threshold = DETECTOR_AVG_THRESHOLD;
 
 int reconnect_delay = 60;   // for MQTT, sec
 

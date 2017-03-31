@@ -14,4 +14,4 @@
 #define DETECTOR_STD_THRESHOLD_2 100
 
 // interval sample average over limit along with STD determine movement
-#define DETECTOR_AVG_THRTESHOLD 6200
+#define DETECTOR_AVG_THRESHOLD 6200
