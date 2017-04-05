@@ -1,0 +1,218 @@
+<!DOCTYPE HTML>
+<html>
+	<head>
+		<meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+		<title>Highcharts Example</title>
+<script src="http://code.jquery.com/jquery-3.1.1.min.js"></script>
+
+<script src="https://www.gstatic.com/firebasejs/3.6.10/firebase-app.js"></script>
+<script src="https://www.gstatic.com/firebasejs/3.6.10/firebase-auth.js"></script>
+<script src="https://www.gstatic.com/firebasejs/3.6.10/firebase-database.js"></script>
+<script src="secrets.js"></script>
+
+<script type="text/javascript">
+$(function() {
+
+	var accel_threshold = 5500;
+
+	var id_counter = 1;
+	var last_interval_date = 0;
+
+  // Set up an event that is triggered whenever a new climate-data point is added to firebase
+  var config = {
+    apiKey: firebase_api_key,
+    authDomain: firebase_auth_domain,
+    databaseURL: firebase_database_url
+  };
+
+	firebase.initializeApp(config);
+  firebase.auth().signInWithEmailAndPassword(firebase_user, firebase_pass).catch(function(error) {
+    // Handle Errors here.
+    var errorCode = error.code;
+    var errorMessage = error.message;
+    console.log(errorCode);
+    console.log(errorMessage);
+  });
+
+  var fb = firebase.database().ref('washer');
+  var wait = false;
+
+  fb.on('child_added', function(data) {
+
+    var dataVal = data.val();
+    var dataKey = parseInt(data.key);
+
+		current_interval_date = new Date(parseInt(dataVal.timestamp))
+
+		if (dataVal.detector["count"] == dataVal.detector.threshold) {
+
+			// add a vertical plotLine at detector threshold
+			$('#container').highcharts().xAxis[0].addPlotLine({
+				value: current_interval_date,
+				color: 'red',
+				width: 1,
+				zIndex: 5,
+				id: 'detector-interval-' + id_counter,
+				label: {
+					text: dataVal.detected.std + " / " + dataVal.detected.avg + " / " + dataVal.detected["count"]
+				}
+			});
+
+			// color-shade past interval if detected threshold reached
+			if (dataVal.state) {
+				$('#container').highcharts().xAxis[0].addPlotBand({
+					color: '#FFCCCC',
+					from: last_interval_date,
+					to: current_interval_date,
+					id: 'detected-range-' + id_counter
+				});
+			}
+
+			id_counter++;
+			last_interval_date = current_interval_date;
+		}
+
+    // add ax point to series 0, don't redraw yet (false)
+    $('#container').highcharts().series[0].addPoint({
+        x: new Date(parseInt(dataVal.timestamp)),
+        y: dataVal.accel.avg
+    }, false);
+
+		if (accel_threshold != dataVal.accel.threshold) {
+			accel_threshold = dataVal.accel.threshold;
+
+			Highcharts.charts[0].yAxis[0].update({
+				plotLines: [{
+					value: accel_threshold,
+					color: 'green',
+					dashStyle: 'shortdash',
+					width: 2,
+					zIndex: 5,
+					label: {
+						text: 'threshold'
+					}
+				}]
+			}, false);
+		}
+
+    //console.log($('#container').highcharts().series[0]);
+
+    // added points; delayed redraw
+    if (!wait) {
+    	// console.log("waiting");
+    	wait = true;
+    	setTimeout(function(){
+  		$('#container').highcharts().redraw();
+    		wait = false;
+    	}, 1);
+    }
+  });
+
+  $(document).ready(function() {
+
+      Highcharts.setOptions({
+          global: {
+              useUTC: false
+          }
+      });
+
+      // set up highcharts
+      $('#container').highcharts({
+          chart: {
+              type: 'spline'
+          },
+          title: {
+              text: 'Washer Accelerometer Data'
+          },
+          xAxis: {
+              type: 'datetime'
+          },
+          yAxis: [{
+              labels: {
+                  format: '{value}'
+              },
+              title: {
+                  text: 'ACCEL AVG'
+              },
+							plotLines: [{
+								value: accel_threshold,
+								color: 'green',
+								dashStyle: 'shortdash',
+								width: 1,
+								zIndex: 5,
+								label: {
+									text: 'threshold'
+								}
+							}]
+          }],
+          legend: {
+              enabled: true
+          },
+          exporting: {
+              enabled: false
+          },
+          rangeSelector: {
+          	enabled: true,
+          	buttons: [{
+          		type: 'second',
+          		count: 5,
+          		text: '5s'
+          	},{
+          		type: 'minute',
+          		count: 1,
+          		text: 'min'
+          	},{
+          	    type: 'hour',
+          		count: 1,
+          		text: 'hr'
+          	},{
+          	    type: 'day',
+          		count: 1,
+          		text: 'day'
+          	},{
+          	    type: 'week',
+          		count: 1,
+          		text: 'week'
+          	},{
+				type: 'month',
+				count: 1,
+				text: '1m'
+			}, {
+				type: 'month',
+				count: 3,
+				text: '3m'
+			}, {
+				type: 'month',
+				count: 6,
+				text: '6m'
+			}, {
+				type: 'ytd',
+				text: 'YTD'
+			}, {
+				type: 'year',
+				count: 1,
+				text: '1y'
+			}, {
+				type: 'all',
+				text: 'All'
+          	}]
+          },
+          navigator: {
+          	enabled: true
+          },
+          series: [{
+              name: 'accel',
+              yAxis: 0,
+              turboThreshold: 10000
+          }]
+      });
+  });
+});
+		</script>
+	</head>
+	<body>
+        <script src="http://code.highcharts.com/stock/highstock.js"></script>
+        <script src="http://code.highcharts.com/stock/modules/exporting.js"></script>
+        <div id="container" style="width: 1400px; height: 700px;"></div>
+    </body>
+</html>

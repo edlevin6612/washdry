@@ -54,9 +54,8 @@ sensor/<DEVICE_NAME>/set/firebase_send_data
 
 TODO:
 
-1. Research alerting service that can be invoked directly from device
-2. Fix docs
-3. Fix Firebase client
+1. Research alerting service that can be invoked directly from device (SMS or SMS via email)
+2. Fix Firebase client
 
 */
 
@@ -103,8 +102,6 @@ TODO:
 #define RUNNING 1 //washer/dryer running
 #define MOVEMENT_DETECTED 0
 #define MOVEMENT_NOT_DETECTED 1
-
-#define DEVICE_NAME "washer"
 
 Statistic accelStats;
 Statistic detectorStats;
@@ -464,8 +461,8 @@ void loop()
     // send data to Firebase
     if (app_firebase_send_data == 1)
     {
-      accel["avg"]       = app_accel_avg;
-      accel["threshold"] = app_accel_threshold;
+      accel["avg"]                   = app_accel_avg;
+      accel["threshold"]             = app_accel_threshold;
 
       detector["count"]              = app_detector_count;
       detector["threshold"]          = app_detector_threshold;

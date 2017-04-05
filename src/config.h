@@ -1,3 +1,7 @@
+// name of the appliance being monitored (e.g. washer or dryer)
+// this value serves as an identifier for Firebase and MQTT topic names
+#define DEVICE_NAME "washer"
+
 // app_accel_avg over this value == movement for the sample
 #define APP_ACCEL_THRESHOLD 6100
 
