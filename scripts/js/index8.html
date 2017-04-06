@@ -15,6 +15,8 @@ $(function() {
 
 	var accel_threshold = 5500;
 
+	var detected_count = 0;
+
 	var id_counter = 1;
 	var last_interval_date = 0;
 
@@ -44,7 +46,12 @@ $(function() {
 
 		current_interval_date = new Date(parseInt(dataVal.timestamp))
 
-		if (dataVal.detector["count"] == dataVal.detector.threshold) {
+		// fix arduino code to return STD, AVG, and detected count in one sample, for now compensate
+		if (dataVal.detector["count"] == dataVal.detector.threshold-1) {
+		  detected_count = dataVal.detected["count"];
+		}
+
+		if (dataVal.detector["count"] == 0) {
 
 			// add a vertical plotLine at detector threshold
 			$('#container').highcharts().xAxis[0].addPlotLine({
@@ -54,7 +61,7 @@ $(function() {
 				zIndex: 5,
 				id: 'detector-interval-' + id_counter,
 				label: {
-					text: dataVal.detected.std + " / " + dataVal.detected.avg + " / " + dataVal.detected["count"]
+					text: dataVal.detected.std + " / " + dataVal.detected.avg + " / " + detected_count
 				}
 			});
 

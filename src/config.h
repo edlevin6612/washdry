@@ -3,7 +3,7 @@
 #define DEVICE_NAME "washer"
 
 // app_accel_avg over this value == movement for the sample
-#define APP_ACCEL_THRESHOLD 6100
+#define APP_ACCEL_THRESHOLD 6000
 
 // num of positive samples required to consider interval as having movement
 #define APP_DETECTED_THRESHOLD 12
