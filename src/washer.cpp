@@ -52,11 +52,6 @@ sensor/<DEVICE_NAME>/set/mqtt_publish_data
 sensor/<DEVICE_NAME>/set/firebase_send_data
 0 or 1
 
-TODO:
-
-1. Research alerting service that can be invoked directly from device (SMS or SMS via email)
-2. Fix Firebase client
-
 */
 
 // MPU6050 Includes
@@ -64,17 +59,18 @@ TODO:
 #include "I2Cdev.h"
 #include "MPU6050.h"
 #include "Statistic.h"
+#include "Gsender.h"
 
 #include "secrets.h"
 #include "config.h"
 
 // ESP8266 Includes
 #include <ESP8266WiFi.h>
-#include <PubSubClient.h>
+//#include <PubSubClient.h>
 
 // PlatformIO needed these included explicitly
 #include <ESP8266HTTPClient.h>
-#include <ESP8266WebServer.h>
+//#include <ESP8266WebServer.h>
 
 // Firebase client
 #include <Firebase.h>
@@ -112,6 +108,7 @@ const char* ssid = WIFI_SSID;
 const char* password = WIFI_PASSWORD;
 
 // MQTT Auth and Topic vars
+/*
 const char* mqtt_server = MQTT_SERVER;
 const char* mqtt_username = MQTT_USERNAME;
 const char* mqtt_password = MQTT_PASSWORD;
@@ -125,14 +122,14 @@ char mqtt_topic_set_accel_threshold[30];
 char mqtt_topic_set_detected_threshold[50];
 char mqtt_topic_set_detector_threshold[50];
 char mqtt_topic_set_detector_std_threshold_1[50];
-char mqtt_topic_set_detector_std_threshold_2[50];
+// char mqtt_topic_set_detector_std_threshold_2[50];
 char mqtt_topic_set_detector_avg_threshold[50];
 
 char mqtt_topic_set_mqtt_publish_data[50];
 char mqtt_topic_set_firebase_send_data[50];
 
 WiFiClient espClient;
-PubSubClient client(espClient);
+PubSubClient client(espClient); */
 
 // MPU-6050 Accelerometer ------------------------------------------------------
 // 0x68 default I2C address
@@ -147,7 +144,7 @@ int16_t app_az_min = 0, app_az_max = 0, app_az_range, app_az_range_raw;
 // end MPU-6050-----------------------------------------------------------------
 
 // accelerometer sensor ===============================================
-int app_reading = 0; // reading = 1 mean no movement, 0=movement
+// int app_reading = 1; // reading = 1 mean no movement, 0=movement
 // int app_reading_previous = 0;
 int app_state = STOPPED;  // 1 = running, 0 = stopped
 int last_app_state = STOPPED;
@@ -158,7 +155,8 @@ unsigned long reconnect_time = 0; //millis of last reconnect attempt
 int app_detector_count = 0;   //number of captures
 int app_detected_count = 0;   //number of readings showing movement
 
-char appString[100];   // output data to serial buffer
+char sampleStats[100];   // output sample stats to serial buffer
+char intervalStats[100];  // output interval stats to serial buffer
 
 // stat variables
 int app_accel_avg = 0;
@@ -170,13 +168,13 @@ int app_accel_threshold = APP_ACCEL_THRESHOLD;
 int app_detected_threshold = APP_DETECTED_THRESHOLD;
 int app_detector_threshold = APP_DETECTOR_THRESHOLD;
 int detector_std_threshold_1 = DETECTOR_STD_THRESHOLD_1;
-int detector_std_threshold_2 = DETECTOR_STD_THRESHOLD_2;
+// int detector_std_threshold_2 = DETECTOR_STD_THRESHOLD_2;
 int detector_avg_threshold = DETECTOR_AVG_THRESHOLD;
 
-int reconnect_delay = 60;   // for MQTT, sec
+//int reconnect_delay = 60;   // for MQTT, sec
 
 // Reporting
-int app_mqtt_publish_data = 1;
+//int app_mqtt_publish_data = 1;
 int app_firebase_send_data = 1;
 
 // Firebase config
@@ -186,6 +184,25 @@ JsonObject& accel = firebaseObject.createNestedObject("accel");
 JsonObject& detector = firebaseObject.createNestedObject("detector");
 JsonObject& detected = firebaseObject.createNestedObject("detected");
 JsonObject& tempTime = firebaseObject.createNestedObject("timestamp");
+
+// Gmail sender
+Gsender *gsender = Gsender::Instance();
+String to_address = TO_ADDRESS;
+
+void send_notification(const String &message)
+{
+  String device = String(DEVICE_NAME);
+  device.toUpperCase();
+  String subject = device + " STATUS UPDATE";
+
+  Serial.println("Sending notification...");
+  if(gsender->Subject(subject)->Send(to_address, message)) {
+      Serial.println("Notification sent");
+  } else {
+      Serial.print("Error sending notification: ");
+      Serial.println(gsender->getError());
+  }
+}
 
 void setup_wifi()
 {
@@ -210,7 +227,7 @@ void setup_wifi()
 }
 
 // process incoming MQTT messages
-void callback(char* topic, byte* payload, unsigned int length)
+/*void callback(char* topic, byte* payload, unsigned int length)
 {
   Serial.print("Message arrived [");
   Serial.print(topic);
@@ -255,8 +272,8 @@ void callback(char* topic, byte* payload, unsigned int length)
     detector_std_threshold_1 = i;
     Serial.print("detector STD threshold 1 set to ");
     Serial.println(i);
-  }
-  else if (strcmp(topic, mqtt_topic_set_detector_std_threshold_2) == 0)
+  } */
+/* else if (strcmp(topic, mqtt_topic_set_detector_std_threshold_2) == 0)
   {
     payload[length] = '\0';
     String s = String((char*)payload);
@@ -264,8 +281,8 @@ void callback(char* topic, byte* payload, unsigned int length)
     detector_std_threshold_2 = i;
     Serial.print("detector STD threshold 2 set to ");
     Serial.println(i);
-  }
-  else if (strcmp(topic, mqtt_topic_set_detector_avg_threshold) == 0)
+  } */
+  /*else if (strcmp(topic, mqtt_topic_set_detector_avg_threshold) == 0)
   {
     payload[length] = '\0';
     String s = String((char*)payload);
@@ -292,9 +309,9 @@ void callback(char* topic, byte* payload, unsigned int length)
     Serial.print("appliance Firebase send data set to ");
     Serial.println(i);
   }
-}
+} */
 
-void reconnect()
+/*void reconnect()
 {
   // Attempt to connect 3 times and continue
   int attempt = 1;
@@ -323,9 +340,9 @@ void reconnect()
       Serial.println(" seconds");
     }
   }
-}
+}*/
 
-void update_via_mqtt()
+/*void update_via_mqtt()
 {
   if (app_state == RUNNING) {
     client.publish(mqtt_topic_app_status, "Running", true);
@@ -334,7 +351,7 @@ void update_via_mqtt()
     client.publish(mqtt_topic_app_status, "Stopped", true);
   }
   Serial.println("mqtt published!");
-}
+}*/
 
 int16_t trackMinMax(int16_t current, int16_t *min, int16_t *max)
 {
@@ -351,6 +368,7 @@ int16_t trackMinMax(int16_t current, int16_t *min, int16_t *max)
 void setup()
 {
   // interpolate MQTT topic names
+  /*
   sprintf(mqtt_topic_accel_avg, "sensor/%s/accel_avg", DEVICE_NAME);
   sprintf(mqtt_topic_app_status, "sensor/%s/status", DEVICE_NAME);
 
@@ -360,26 +378,26 @@ void setup()
   sprintf(mqtt_topic_set_detected_threshold, "sensor/%s/set/detected_threshold", DEVICE_NAME);
   sprintf(mqtt_topic_set_detector_threshold, "sensor/%s/set/detector_threshold", DEVICE_NAME);
   sprintf(mqtt_topic_set_detector_std_threshold_1, "sensor/%s/set/detector_std_threshold_1", DEVICE_NAME);
-  sprintf(mqtt_topic_set_detector_std_threshold_2, "sensor/%s/set/detector_std_threshold_2", DEVICE_NAME);
+  // sprintf(mqtt_topic_set_detector_std_threshold_2, "sensor/%s/set/detector_std_threshold_2", DEVICE_NAME);
   sprintf(mqtt_topic_set_detector_avg_threshold, "sensor/%s/set/detector_avg_threshold", DEVICE_NAME);
 
   sprintf(mqtt_topic_set_mqtt_publish_data, "sensor/%s/set/mqtt_publish_data", DEVICE_NAME);
-  sprintf(mqtt_topic_set_firebase_send_data, "sensor/%s/set/firebase_send_data", DEVICE_NAME);
+  sprintf(mqtt_topic_set_firebase_send_data, "sensor/%s/set/firebase_send_data", DEVICE_NAME); */
 
   Serial.begin(115200); // setup serial
 
   setup_wifi();
 
-  client.setServer(mqtt_server, 1883);
-  client.setCallback(callback);
+  // client.setServer(mqtt_server, 1883);
+  // client.setCallback(callback);
 
   Wire.begin();
   MPU_APPLIANCE.initialize();
 
-  reconnect();
-  reconnect_time = millis();
+  // reconnect();
+  // reconnect_time = millis();
 
-  update_via_mqtt();
+  // update_via_mqtt();
 
   Firebase.begin(FIREBASE_HOST, FIREBASE_AUTH);
 
@@ -396,19 +414,19 @@ void loop()
   {
     sample_time = millis();
   }
-  if (reconnect_time > millis())
+  /*if (reconnect_time > millis())
   {
     reconnect_time = millis();
-  }
+  }*/
 
   // attempt MQTT reconnect every [reconnect_delay] seconds
-  if (!client.connected() && ((millis() - reconnect_time) > (reconnect_delay*1000)))
+  /*if (!client.connected() && ((millis() - reconnect_time) > (reconnect_delay*1000)))
   {
     reconnect();
     reconnect_time = millis();
   }
 
-  client.loop();
+  client.loop();*/
 
   // get data from accelerometer and update min/max
   MPU_APPLIANCE.getMotion6(&app_ax, &app_ay, &app_az, &app_gx, &app_gy, &app_gz);
@@ -421,7 +439,7 @@ void loop()
   {
     sample_time = millis();    //reset sample_time to wait for next Xms
 
-    // store expression result before calling abs() since it is a macro and can result in race condition wierdness (i.e. neg result)
+    // store expression result before calling abs() since it is a macro and can result in race condition weirdness (i.e. neg result)
     app_ax_range_raw = app_ax_max - app_ax_min;
     app_ay_range_raw = app_ay_max - app_ay_min;
     app_az_range_raw = app_az_max - app_az_min;
@@ -447,59 +465,65 @@ void loop()
     accelStats.clear();
 
     // Output to serial monitor
-    sprintf(appString, "S: %d, A: %d/%d, DR: %d/%d, DD: %d/%d, STD: %d, AVG: %d", app_state, app_accel_avg, app_accel_threshold,
+    sprintf(sampleStats, "Sample Stats: (S: %d, A: %d/%d, DR: %d/%d, DD: %d/%d)", app_state, app_accel_avg, app_accel_threshold,
                                                      app_detector_count, app_detector_threshold, app_detected_count,
-                                                     app_detected_threshold, detector_std, detector_avg);
-    Serial.println(appString);
+                                                     app_detected_threshold);
+    Serial.println(sampleStats);
 
-    // publish data via MQTT
-    if (app_mqtt_publish_data == 1)
-    {
-      client.publish(mqtt_topic_accel_avg, String(app_accel_avg).c_str());
-    }
+    // only send data on activity
+    //if (app_detected_count >= app_detected_threshold) {
 
-    // send data to Firebase
-    if (app_firebase_send_data == 1)
-    {
-      accel["avg"]                   = app_accel_avg;
-      accel["threshold"]             = app_accel_threshold;
-
-      detector["count"]              = app_detector_count;
-      detector["threshold"]          = app_detector_threshold;
-
-      detected["count"]              = app_detected_count;
-      detected["threshold"]          = app_detected_threshold;
-
-      detected["std"]                = detector_std;
-      detected["avg"]                = detector_avg;
-      detected["std_threshold_1"]    = detector_std_threshold_1;
-      detected["std_threshold_2"]    = detector_std_threshold_2;
-      detected["avg_threshold"]      = detector_avg_threshold;
-
-      firebaseObject["state"]        = app_state;
-      tempTime[".sv"]                = "timestamp";
-
-      Firebase.push(firebaseRootName, firebaseObject);
-      if (Firebase.failed())
+      // publish data via MQTT
+      /*if (app_mqtt_publish_data == 1)
       {
-          Serial.print("Error sending to Firebase:");
-          Serial.println(Firebase.error());
+        client.publish(mqtt_topic_accel_avg, String(app_accel_avg).c_str());
+      }*/
+
+      // send data to Firebase
+      Serial.printf("heap: %u\n", ESP.getFreeHeap());
+      if (app_firebase_send_data == 1)
+      {
+        accel["avg"]                   = app_accel_avg;
+        accel["threshold"]             = app_accel_threshold;
+
+        detector["count"]              = app_detector_count;
+        detector["threshold"]          = app_detector_threshold;
+
+        detected["count"]              = app_detected_count;
+        detected["threshold"]          = app_detected_threshold;
+
+        detected["std"]                = detector_std;
+        detected["avg"]                = detector_avg;
+        detected["std_threshold_1"]    = detector_std_threshold_1;
+        // detected["std_threshold_2"]    = detector_std_threshold_2;
+        detected["avg_threshold"]      = detector_avg_threshold;
+
+        firebaseObject["state"]        = app_state;
+        tempTime[".sv"]                = "timestamp";
+
+        Firebase.push(firebaseRootName, firebaseObject);
+        if (Firebase.failed())
+        {
+            Serial.print("Error sending to Firebase:");
+            Serial.println(Firebase.error());
+        }
       }
-    }
+    //}
 
     if (app_accel_avg > app_accel_threshold)
     {
-      app_reading = MOVEMENT_DETECTED;
+      // app_reading = MOVEMENT_DETECTED;
+      app_detected_count++;
     }
 
     app_detector_count++;     // count samples
 
-    if (app_reading == MOVEMENT_DETECTED)
+    /*if (app_reading == MOVEMENT_DETECTED)
     {
       app_detected_count++;   // count samples with movement
     }
 
-    app_reading = MOVEMENT_NOT_DETECTED;        // reset
+    app_reading = MOVEMENT_NOT_DETECTED;        // reset*/
   } //end sampling every 5 seconds
 
   // all samples for this interval have been collected, determine movement for interval
@@ -508,32 +532,41 @@ void loop()
     detector_std = (int) detectorStats.pop_stdev();
     detector_avg = (int) detectorStats.average();
 
+    // Output to serial monitor
+    sprintf(intervalStats, "Interval Stats: (STD: %d, AVG: %d)", detector_std, detector_avg);
+    Serial.println(intervalStats);
+
     // Movement is determined by:
     // 1. enough positive samples and STD threshold 1 reached
     // or
-    // 2. enough positive samples and STD threshold 2 reached and sample avg below threshold
+    // 2. enough positive samples and sample avg above threshold
     if ((app_detected_count >= app_detected_threshold) &&
-       ((detector_std >= detector_std_threshold_1) || ((detector_std > detector_std_threshold_2) && (detector_avg < detector_avg_threshold))))
+       ((detector_std >= detector_std_threshold_1) || (detector_avg >= detector_avg_threshold)))
     {
-      app_state = RUNNING;
+      if (last_app_state == STOPPED)
+      {
+        app_state = RUNNING;
+        send_notification("Cycle Started");
+      }
     }
     else
     {
-      if (app_state == RUNNING)
+      if (last_app_state == RUNNING)
       {
         app_state = STOPPED;
+        send_notification("Cycle Finished");
       }
     }
 
-    // reset
+    // reset for next interval
     app_detector_count = 0;
     app_detected_count = 0;
     detectorStats.clear();
   }
 
   // alert if this interval's state differs from the last
-  if (last_app_state != app_state)
+  /*if (last_app_state != app_state)
   {
     update_via_mqtt();
-  }
+  }*/
 }

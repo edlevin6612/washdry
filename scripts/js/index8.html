@@ -123,6 +123,25 @@ $(function() {
           }
       });
 
+			// purge data from Firebase
+			$('#delete_button').on('click',function(){
+				var r = confirm("All collected washer data will be deleted! Are you sure? ");
+				if (r == true) {
+					fb.remove()
+						.then(function() {
+							msg = "Data has been purged"
+							console.log(msg)
+							alert(msg)
+						})
+						.catch(function(error) {
+							err_msg = "Data purge failed: " + error.message
+							console.log(err_msg)
+							alert(err_msg)
+						});
+						window.location.reload()
+					}
+			});
+
       // set up highcharts
       $('#container').highcharts({
           chart: {
@@ -220,6 +239,7 @@ $(function() {
 	<body>
         <script src="http://code.highcharts.com/stock/highstock.js"></script>
         <script src="http://code.highcharts.com/stock/modules/exporting.js"></script>
+				<div><form><input type="button" value="Purge Data" id="delete_button"></form></div>
         <div id="container" style="width: 1400px; height: 700px;"></div>
     </body>
 </html>

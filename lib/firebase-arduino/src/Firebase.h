@@ -23,8 +23,11 @@
 #include <Arduino.h>
 #include <memory>
 #include "FirebaseHttpClient.h"
+#include <ESP8266HTTPClient.h>
 #include "FirebaseError.h"
 #define ARDUINOJSON_USE_ARDUINO_STRING 1
+#define SERVER_PORT 443
+#define SERVER_FINGERPRINT "B8 4F 40 70 0C 63 90 E0 07 E8 7D BD B4 11 D0 4A EA 9C 90 F6"
 #include "third-party/arduino-json-5.6.7/include/ArduinoJson.h"
 
 class FirebaseGet;
@@ -65,7 +68,6 @@ class Firebase {
   Firebase() {}
 
  private:
-  std::unique_ptr<FirebaseHttpClient> http_;
   std::string host_;
   std::string auth_;
 };
@@ -75,8 +77,7 @@ class FirebaseCall {
   FirebaseCall() {}
   FirebaseCall(const std::string& host, const std::string& auth,
                const char* method, const std::string& path,
-               const std::string& data = "",
-               FirebaseHttpClient* http = NULL);
+               const std::string& data = "");
   virtual ~FirebaseCall();
 
   virtual const FirebaseError& error() const {
@@ -90,7 +91,6 @@ class FirebaseCall {
   const JsonObject& json();
 
  protected:
-  FirebaseHttpClient* http_;
   FirebaseError error_;
   std::string response_;
   DynamicJsonBuffer buffer_;
@@ -121,7 +121,7 @@ class FirebasePush : public FirebaseCall {
  public:
   FirebasePush() {}
   FirebasePush(const std::string& host, const std::string& auth,
-               const std::string& path, const std::string& value, FirebaseHttpClient* http = NULL);
+               const std::string& path, const std::string& value);
   virtual ~FirebasePush() {}
 
   virtual const std::string& name() const {
@@ -148,7 +148,6 @@ class FirebaseStream : public FirebaseCall {
   virtual ~FirebaseStream() {}
 
   // Return if there is any event available to read.
-  virtual bool available();
 
   // Event type.
   enum Event {
@@ -171,7 +170,6 @@ class FirebaseStream : public FirebaseCall {
   }
 
   // Read next json encoded `event` from stream.
-  virtual Event read(std::string& event);
 
   const FirebaseError& error() const {
     return _error;

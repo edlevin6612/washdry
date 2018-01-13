@@ -189,27 +189,10 @@ class FirebaseArduino {
    * You should check success() after calling.
    * This changes the state of this object. Once this is called you may start
    * monitoring available() and calling readEvent() to get new events.
-   * WARNING: Currently you cannot make another call while the stream is
-   * running, otherwise you will crash due to memory issues. See:
-   * https://github.com/googlesamples/firebase-arduino/issues/48
    * \param path The path inside of your db to the node you wish to monitor.
    */
   void stream(const String& path);
 
-  /**
-   * Checks if there are new events available. This is only meaningful once
-   * stream() has been called.
-   * \return If a new event is ready.
-   */
-  bool available();
-
-  /**
-   * Reads the next event in a stream. This is only meaningful once stream() has
-   * been called.
-   * \return FirebaseObject will have ["type"] that describes the event type, ["path"]
-   * that describes the effected path and ["data"] that was updated.
-   */
-  FirebaseObject readEvent();
 
   /**
    * \return Whether the last command was successful.
@@ -229,7 +212,6 @@ class FirebaseArduino {
   std::string host_;
   std::string auth_;
   FirebaseError error_;
-  std::unique_ptr<FirebaseHttpClient> http_;
 };
 
 extern FirebaseArduino Firebase;
